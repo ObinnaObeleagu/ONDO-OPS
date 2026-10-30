@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Election Control Room — Ondo North</title>
+<style>
+/* ===================================================================
+   Design tokens. Chart colours come from a palette validated for
+   colour-vision deficiency in both light and dark modes.
+   =================================================================== */
+:root {
+  --page:#f9f9f7; --surface:#fcfcfb; --panel:#ffffff; --panel-2:#f4f4f1;
+  --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --accent:#2a78d6;
+  --p-APC:#008300; --p-PDP:#e34948; --p-LP:#2a78d6; --p-ADC:#eb6834;
+  --p-NNPP:#6250d6; --p-SDP:#1baf7a; --p-APGA:#eda100; --p-YPP:#e87ba4;
+  --p-OTHER:#898781;
+  --r:10px; --r-sm:6px;
+  color-scheme: light;
+}
+html[data-theme="dark"] {
+  --page:#0d0d0d; --surface:#1a1a19; --panel:#1a1a19; --panel-2:#222221;
+  --ink:#f0efec; --ink-2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+  --accent:#3987e5;
+  --p-APC:#008300; --p-PDP:#e66767; --p-LP:#3987e5; --p-ADC:#d95926;
+  --p-NNPP:#9085e9; --p-SDP:#199e70; --p-APGA:#c98500; --p-YPP:#d55181;
+  color-scheme: dark;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; background:var(--page); color:var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3 { margin:0; font-weight:650; letter-spacing:-0.01em; }
+button { font:inherit; color:inherit; cursor:pointer; }
+
+/* ---------- top bar ---------- */
+.topbar {
+  position:sticky; top:0; z-index:50; background:var(--panel);
+  border-bottom:1px solid var(--border); padding:10px 16px;
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+}
+.brand { display:flex; align-items:baseline; gap:10px; margin-right:auto; }
+.brand strong { font-size:15px; }
+.brand span { color:var(--muted); font-size:12px; }
+.livedot {
+  width:7px; height:7px; border-radius:50%; background:var(--good);
+  display:inline-block; margin-right:5px;
+  animation:pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+@media (prefers-reduced-motion: reduce) { .livedot{animation:none} }
+
+.roleswitch { display:flex; gap:2px; background:var(--panel-2);
+  padding:3px; border-radius:var(--r); border:1px solid var(--border); }
+.roleswitch button {
+  border:0; background:transparent; padding:6px 12px; border-radius:var(--r-sm);
+  font-size:12.5px; font-weight:550; color:var(--ink-2); white-space:nowrap;
+}
+.roleswitch button[aria-selected="true"] { background:var(--panel); color:var(--ink);
+  box-shadow:0 1px 2px rgba(0,0,0,.14); }
+.iconbtn { border:1px solid var(--border); background:var(--panel);
+  border-radius:var(--r-sm); padding:6px 10px; font-size:12.5px; color:var(--ink-2); }
+
+/* ---------- layout ---------- */
+.wrap { max-width:1320px; margin:0 auto; padding:18px 16px 56px; }
+.viewnote {
+  background:var(--panel-2); border:1px solid var(--border); border-left:3px solid var(--accent);
+  border-radius:var(--r-sm); padding:9px 12px; margin-bottom:16px;
+  font-size:12.5px; color:var(--ink-2);
+}
+.grid { display:grid; gap:14px; }
+.panel {
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:var(--r); padding:14px 16px;
+}
+.panel h3 { font-size:13px; letter-spacing:.01em; margin-bottom:2px; }
+.panel .sub { color:var(--muted); font-size:11.5px; margin-bottom:12px; }
+
+/* ---------- stat tiles ---------- */
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+.stat { background:var(--panel); border:1px solid var(--border);
+  border-radius:var(--r); padding:13px 15px; }
+.stat .k { font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--muted); font-weight:600; }
+.stat .v { font-size:28px; font-weight:680; letter-spacing:-0.02em; margin-top:3px; }
+.stat .d { font-size:11.5px; color:var(--ink-2); margin-top:2px; }
+.stat.alarm .v { color:var(--critical); }
+
+/* ---------- chart bits ---------- */
+.bars { display:flex; flex-direction:column; gap:9px; }
+.barrow { display:grid; grid-template-columns:132px 1fr 62px; align-items:center; gap:10px; }
+.barrow .lbl { font-size:12.5px; color:var(--ink-2); overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.track { height:16px; background:var(--panel-2); border-radius:4px; position:relative;
+  overflow:hidden; }
+.fill { height:100%; border-radius:4px; transition:width .5s cubic-bezier(.3,.9,.3,1); }
+.barrow .num { font-size:12.5px; font-variant-numeric:tabular-nums;
+  text-align:right; color:var(--ink); font-weight:600; }
+
+/* stacked status bar */
+.stack { display:flex; height:20px; border-radius:4px; overflow:hidden; gap:2px;
+  background:var(--panel-2); }
+.stack div { transition:flex-grow .5s ease; }
+.legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:11px; font-size:12px;
+  color:var(--ink-2); }
+.legend i { width:10px; height:10px; border-radius:3px; display:inline-block;
+  margin-right:6px; vertical-align:-1px; }
+
+/* party chart rows — every bar is directly labelled, which is what
+   lets the red/green pair stay legible for protan viewers */
+.party { display:grid; grid-template-columns:52px 1fr auto; align-items:center;
+  gap:10px; margin-bottom:8px; }
+.party .code { font-size:12.5px; font-weight:680; font-variant-numeric:tabular-nums; }
+.party .num { font-size:12.5px; font-variant-numeric:tabular-nums; font-weight:600;
+  min-width:64px; text-align:right; }
+.party .pct { font-size:11px; color:var(--muted); min-width:42px; text-align:right;
+  display:inline-block; }
+
+/* ---------- tables ---------- */
+table { width:100%; border-collapse:collapse; font-size:12.5px; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--muted); font-weight:600; padding:7px 9px; border-bottom:1px solid var(--border); }
+td { padding:8px 9px; border-bottom:1px solid var(--border); color:var(--ink-2);
+  vertical-align:middle; }
+tr:last-child td { border-bottom:0; }
+td.n { font-variant-numeric:tabular-nums; text-align:right; }
+tbody tr:hover { background:var(--panel-2); }
+
+/* ---------- chips ---------- */
+.chip { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600;
+  padding:2.5px 8px; border-radius:99px; border:1px solid var(--border);
+  white-space:nowrap; }
+.chip i { width:7px; height:7px; border-radius:50%; display:inline-block; }
+.chip.verified  { color:var(--good); }     .chip.verified i  { background:var(--good); }
+.chip.pending   { color:var(--ink-2); }    .chip.pending i   { background:var(--muted); }
+.chip.disputed  { color:var(--critical); } .chip.disputed i  { background:var(--critical); }
+.chip.waiting   { color:var(--muted); }    .chip.waiting i   { background:var(--axis); }
+
+/* ---------- alerts ---------- */
+.alert { display:flex; gap:11px; padding:11px 12px; border:1px solid var(--border);
+  border-radius:var(--r-sm); margin-bottom:9px; background:var(--panel-2); }
+.alert.critical { border-left:3px solid var(--critical); }
+.alert.warning  { border-left:3px solid var(--warning); }
+.alert .ico { font-size:14px; line-height:1.3; flex-shrink:0; width:16px; text-align:center; }
+.alert .body { flex:1; min-width:0; }
+.alert .t { font-size:12.5px; font-weight:620; margin-bottom:1px; }
+.alert .m { font-size:12px; color:var(--ink-2); }
+.alert .w { font-size:11px; color:var(--muted); margin-top:3px; }
+
+/* ---------- agent phone ---------- */
+.phoneWrap { display:flex; justify-content:center; padding:4px 0 10px; }
+.phone { width:100%; max-width:392px; background:var(--panel);
+  border:1px solid var(--border); border-radius:20px; overflow:hidden;
+  box-shadow:0 10px 36px rgba(0,0,0,.16); }
+.phone .head { padding:15px 17px; border-bottom:1px solid var(--border);
+  background:var(--panel-2); }
+.phone .head .pu { font-size:15px; font-weight:680; margin-top:4px; }
+.phone .head .meta { font-size:11.5px; color:var(--muted); margin-top:2px;
+  font-variant-numeric:tabular-nums; }
+.phone .form { padding:15px 17px 19px; }
+.field { margin-bottom:14px; }
+.field label { display:block; font-size:12px; font-weight:600; margin-bottom:5px; }
+.field .hint { font-size:11px; color:var(--muted); font-weight:400; }
+input[type=number], input[type=text], textarea, select {
+  width:100%; padding:9px 11px; font:inherit; font-size:14px;
+  background:var(--page); color:var(--ink);
+  border:1px solid var(--border); border-radius:var(--r-sm);
+}
+input:focus, textarea:focus, select:focus { outline:2px solid var(--accent); outline-offset:1px; }
+textarea { resize:vertical; min-height:62px; font-size:13px; }
+.voterow { display:grid; grid-template-columns:1fr 104px; align-items:center;
+  gap:9px; margin-bottom:7px; }
+.voterow .pname { font-size:13px; display:flex; align-items:center; gap:8px; }
+.voterow .swatch { width:11px; height:11px; border-radius:3px; flex-shrink:0; }
+.voterow input { text-align:right; font-variant-numeric:tabular-nums; }
+.totalbox { background:var(--panel-2); border:1px solid var(--border);
+  border-radius:var(--r-sm); padding:11px 12px; margin:13px 0; }
+.totalbox .r { display:flex; justify-content:space-between; font-size:12.5px;
+  margin-bottom:4px; color:var(--ink-2); }
+.totalbox .r.big { font-size:15px; font-weight:680; color:var(--ink);
+  margin:7px 0 0; padding-top:7px; border-top:1px solid var(--border); }
+.totalbox .r span:last-child { font-variant-numeric:tabular-nums; }
+.inlinewarn { border-left:3px solid var(--critical); background:var(--panel-2);
+  border-radius:var(--r-sm); padding:10px 12px; font-size:12px; margin:11px 0;
+  color:var(--ink-2); }
+.inlinewarn b { color:var(--critical); display:block; margin-bottom:3px; font-size:12.5px; }
+.photo { border:1.5px dashed var(--axis); border-radius:var(--r-sm);
+  padding:16px; text-align:center; cursor:pointer; background:var(--page); }
+.photo.on { border-style:solid; border-color:var(--good); background:var(--panel-2); }
+.photo .big { font-size:21px; }
+.photo .t { font-size:12.5px; font-weight:600; margin-top:5px; }
+.photo .s { font-size:11px; color:var(--muted); margin-top:2px; }
+.btn { width:100%; padding:12px; border:0; border-radius:var(--r-sm);
+  background:var(--accent); color:#fff; font-size:14.5px; font-weight:650; }
+.btn:disabled { opacity:.45; cursor:not-allowed; }
+.btn.ghost { background:transparent; border:1px solid var(--border); color:var(--ink-2);
+  font-size:13px; padding:9px; }
+.receipt { padding:34px 22px; text-align:center; }
+.receipt .tick { width:52px; height:52px; border-radius:50%; background:var(--good);
+  color:#fff; font-size:27px; display:flex; align-items:center; justify-content:center;
+  margin:0 auto 15px; }
+.receipt .ref { font-family:ui-monospace,monospace; font-size:19px; font-weight:700;
+  letter-spacing:.07em; margin:9px 0 4px; }
+
+/* ---------- misc ---------- */
+.row { display:flex; gap:9px; align-items:center; flex-wrap:wrap; }
+.spread { display:flex; justify-content:space-between; align-items:center; gap:10px;
+  margin-bottom:12px; flex-wrap:wrap; }
+.sel { padding:6px 10px; font-size:12.5px; border-radius:var(--r-sm);
+  border:1px solid var(--border); background:var(--panel); color:var(--ink); }
+.linkbtn { border:1px solid var(--border); background:var(--panel);
+  border-radius:var(--r-sm); padding:4px 9px; font-size:11.5px; color:var(--ink-2); }
+.linkbtn.pri { background:var(--accent); color:#fff; border-color:transparent; }
+/* a disabled Verify must not look clickable — it means "no EC8A photo yet" */
+.linkbtn:disabled { opacity:.38; cursor:not-allowed; }
+.tag { font-size:9.5px; font-weight:650; padding:0 5px; border-radius:3px;
+  border:1px solid var(--border); color:var(--muted); letter-spacing:.02em; }
+.tag.wa { color:var(--good); border-color:var(--good); }
+.tag.no { color:var(--warning); border-color:var(--warning); }
+.linkbtn:disabled.pri { background:var(--muted); }
+.scroll { max-height:430px; overflow-y:auto; margin:0 -16px; padding:0 16px; }
+.empty { text-align:center; padding:28px 10px; color:var(--muted); font-size:12.5px; }
+.tip { position:fixed; pointer-events:none; z-index:99; background:var(--ink);
+  color:var(--page); font-size:11.5px; padding:5px 9px; border-radius:5px;
+  opacity:0; transition:opacity .12s; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.hidden { display:none !important; }
+@media (max-width:860px){ .barrow{grid-template-columns:104px 1fr 54px} }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <strong>Election Control Room</strong>
+    <span>Ondo North Senatorial District</span>
+  </div>
+  <div class="roleswitch" role="tablist" id="roles">
+    <button role="tab" data-v="agent"   aria-selected="false">Agent</button>
+    <button role="tab" data-v="ward"    aria-selected="false">Ward</button>
+    <button role="tab" data-v="lga"     aria-selected="false">LGA</button>
+    <button role="tab" data-v="control" aria-selected="true">Control Room</button>
+  </div>
+  <button class="iconbtn" id="themeBtn">Light</button>
+</div>
+
+<div class="wrap">
+  <div class="viewnote" id="note"></div>
+  <div id="view"></div>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+/* =====================================================================
+   DEMO DATA
+   Real Ondo North geography: 6 LGAs, 72 wards. Polling units, agents,
+   and results are simulated so the screens can be judged before the
+   official INEC register is loaded.
+   ===================================================================== */
+const PARTIES = [
+  {code:'APC',  name:'All Progressives Congress',   w:0.40},
+  {code:'PDP',  name:'Peoples Democratic Party',    w:0.30},
+  {code:'LP',   name:'Labour Party',                w:0.12},
+  {code:'ADC',  name:'African Democratic Congress', w:0.07},
+  {code:'NNPP', name:'New Nigeria Peoples Party',   w:0.05},
+  {code:'SDP',  name:'Social Democratic Party',     w:0.03},
+  {code:'APGA', name:'All Progressives Grand Alliance', w:0.02},
+  {code:'YPP',  name:'Young Progressives Party',    w:0.01},
+];
+
+const GEO = {
+  'Akoko North-East': ['Edo','Ekan','Ikado I','Ikado II','Ilepa I','Ilepa II','Isowopo I','Isowopo II','Iyometa I','Iyometa II','Oorun I','Oorun II','Oyinmo'],
+  'Akoko North-West': ['Arigidi/Iye I','Arigidi II','Okeagbe','Oyin/Oge','Ajowa/Igasi/Eriti/Gedegede','Ogbagi','Oke-Irun/Surulere','Odo-Irun/Oyinmo','Ese/Afin','Erusu/Karamu/Ibaramu'],
+  'Akoko South-East': ['Epinmi I','Epinmi II','Ifira','Ipe I','Ipe II','Ipesi','Isua I','Isua II','Isua III','Isua IV','Sosan'],
+  'Akoko South-West': ['Oka I Ibaka/Sabo','Oka II A Ikanmu','Oka II B Okia/Korowa','Oka III A Agba','Oka III B Owase/Ikese','Oka IV/Owake/Ebo','Oka V A Owalusin','Oka V B Oka Odo','Ikun','Supare I','Supare II','Akungba I','Akungba II','Oba I','Oba II'],
+  'Ose': ['Afo','Idoani I','Idoani II','Idogun','Ifon I','Ifon II','Ijagba','Ikaro/Elegbeka','Ward 09 (unverified)','Imoru/Arimogija','Okeluse','Ward 12 (unverified)'],
+  'Owo': ['Ehinogbe','Igboroko I','Igboroko II','Ijebu I','Ijebu II','Iloro','Ipele','Isaipen','Isuada/Ipenmen','Iyare','Uso/Emure Ile'],
+};
+const LGA_CODE = {'Akoko North-East':'01','Akoko North-West':'02','Akoko South-East':'03','Akoko South-West':'04','Ose':'17','Owo':'18'};
+
+const FIRST = ['Adebayo','Folake','Olumide','Yetunde','Tunde','Bisola','Segun','Kemi','Rotimi','Ayo','Funmilayo','Dapo','Titilayo','Gbenga','Morounke','Wale','Omolara','Niyi','Bukola','Femi','Toyin','Kayode','Ronke','Sola','Damilola','Abiodun','Oluwaseun','Ifeoluwa'];
+const LAST  = ['Adeyemi','Olatunji','Ogundipe','Afolabi','Akinwale','Adewale','Ilesanmi','Oyedeji','Aluko','Fasoranti','Ajayi','Bamidele','Oluwole','Akeredolu','Olufemi','Agboola','Ogunleye','Adedeji','Omolade','Oladipo','Ariyo','Ogunbiyi'];
+
+/* deterministic PRNG so every reload shows the same board */
+let _s = 20270116;
+const rnd = () => (_s = (_s*1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+const ri = (a,b) => a + Math.floor(rnd()*(b-a+1));
+const pick = a => a[Math.floor(rnd()*a.length)];
+
+const REMARKS = [
+  'Materials arrived 08:10. Voting peaceful throughout.',
+  'BVAS failed twice, replaced by 09:40. Accreditation resumed.',
+  'Heavy rain from 11:00, turnout dropped sharply after that.',
+  'Party agent for another party objected to two ballots. Both resolved by the PO.',
+  'Voting closed 14:30. Counting done in the open, all agents signed.',
+  'Queue still long at 14:30; everyone on the queue was allowed to vote.',
+  'Brief argument over a voter whose PVC would not read. Resolved.',
+  'No incident. All agents signed the EC8A.',
+  'Late start, materials arrived 10:15. PO explained the delay to agents.',
+  'One agent from another party attempted to film the ballot. Stopped by security.',
+  'Power outage during counting, counting continued with phone torches.',
+  'Result sheet torn at the corner but all figures readable and signed.',
+];
+
+const LGAS = [];
+let puId = 0, wardId = 0;
+
+for (const [lgaName, wards] of Object.entries(GEO)) {
+  const lga = { name:lgaName, code:LGA_CODE[lgaName], wards:[] };
+  // reporting strength varies by LGA, as it will on the night
+  const strength = 0.45 + rnd()*0.48;
+  for (const wName of wards) {
+    wardId++;
+    const ward = { id:wardId, name:wName, lga:lgaName, pus:[] };
+    const n = ri(8, 19);
+    for (let u=1; u<=n; u++) {
+      puId++;
+      const reg = ri(210, 880);
+      const code = `${LGA_CODE[lgaName]}/${String(ward.id).padStart(2,'0')}/${String(u).padStart(3,'0')}`;
+      const pu = {
+        id: puId,
+        code: `28/${code}`,
+        name: `${wName.split('/')[0]} ${['Primary School','Town Hall','Open Space','Community Centre','Market Square','Health Centre','Grammar School'][u % 7]} ${u}`,
+        ward: wName, wardId: ward.id, lga: lgaName,
+        registered: reg,
+        agent: `${pick(FIRST)} ${pick(LAST)}`,
+        // an agent may hold more than one number: a main line, a backup
+        // on another network, sometimes a third. Consent is per number.
+        phones: (() => {
+          const n = rnd() < 0.42 ? (rnd() < 0.25 ? 3 : 2) : 1;
+          const labels = ['main', 'backup (other network)', 'ward office'];
+          return Array.from({length:n}, (_,k) => ({
+            number: `+23480${ri(10000000,99999999)}`,
+            label: labels[k],
+            whatsapp: k === 0 || rnd() > 0.5,
+            consent: k === 0 ? true : rnd() > 0.25,
+          }));
+        })(),
+        reported: false,
+      };
+      if (rnd() < strength) {
+        const turnout = 0.28 + rnd()*0.34;
+        let votes = Math.round(reg * turnout);
+        const pv = {};
+        // local swing so LGAs do not all look identical.
+        // Hash the whole name — indexing a fixed character breaks on
+        // short names like "Ose" and "Owo".
+        let h = 0;
+        for (let i=0; i<lgaName.length; i++) h = (h*31 + lgaName.charCodeAt(i)) & 0xffff;
+        const swing = ((h % 7) - 3) * 0.035;
+        let left = votes;
+        PARTIES.forEach((p, i) => {
+          let share = p.w + (i===0 ? swing : i===1 ? -swing : 0) + (rnd()-0.5)*0.09;
+          share = Math.max(0.002, share);
+          const v = i === PARTIES.length-1 ? Math.max(0,left) : Math.min(left, Math.round(votes*share));
+          pv[p.code] = v; left -= v;
+        });
+        const total = Object.values(pv).reduce((a,b)=>a+b,0);
+        const rejected = ri(0, 9);
+        pu.reported   = true;
+        pu.votes      = pv;
+        pu.total      = total;
+        pu.rejected   = rejected;
+        pu.accredited = Math.min(reg, total + rejected + ri(0,6));
+        pu.hasEC8A    = rnd() > 0.09;
+        pu.remarks    = rnd() > 0.55 ? pick(REMARKS) : null;
+        pu.at         = new Date(2027, 0, 16, 14, 0).getTime() + ri(0, 7*3600*1000);
+        // A handful of units genuinely over-report. This is the single
+        // most important thing the control room has to catch, so the
+        // demo must actually produce some: push the figure past the
+        // registered count rather than nudging it.
+        if (rnd() < 0.025) {
+          const needed = (reg - total - rejected) + ri(8, 95);
+          pu.votes.APC += Math.max(12, needed);
+          pu.total = Object.values(pu.votes).reduce((a,b)=>a+b,0);
+        }
+        const over = (pu.total + pu.rejected) > pu.registered;
+        pu.state = over ? 'disputed' : (!pu.hasEC8A ? 'pending' : (rnd() > 0.42 ? 'verified' : 'pending'));
+        pu.over  = over;
+      }
+      ward.pus.push(pu);
+    }
+    lga.wards.push(ward);
+  }
+  LGAS.push(lga);
+}
+
+ALL_PUS_INIT();
+function ALL_PUS_INIT(){}
+const ALL_PUS   = LGAS.flatMap(l => l.wards.flatMap(w => w.pus));
+// primary number = the first one listed
+const primaryPhone = p => p.phones[0].number;
+const phoneCount   = p => p.phones.length;
+const ALL_WARDS = LGAS.flatMap(l => l.wards);
+const DEADLINE  = new Date(2027, 0, 16, 17, 30).getTime();
+
+/* ---- derived ---- */
+const sum = (a,f) => a.reduce((t,x)=>t+f(x),0);
+const fmt = n => n.toLocaleString('en-NG');
+
+function stats(pus) {
+  const rep = pus.filter(p=>p.reported);
+  return {
+    total: pus.length,
+    reported: rep.length,
+    outstanding: pus.length - rep.length,
+    pct: pus.length ? Math.round(1000*rep.length/pus.length)/10 : 0,
+    verified: rep.filter(p=>p.state==='verified').length,
+    pending:  rep.filter(p=>p.state==='pending').length,
+    disputed: rep.filter(p=>p.state==='disputed').length,
+    registered: sum(pus, p=>p.registered),
+    valid: sum(rep, p=>p.total||0),
+    rejected: sum(rep, p=>p.rejected||0),
+    noEC8A: rep.filter(p=>!p.hasEC8A).length,
+  };
+}
+function partyTotals(pus) {
+  const t = {}; PARTIES.forEach(p=>t[p.code]=0);
+  pus.filter(p=>p.reported).forEach(p=>{
+    for (const [c,v] of Object.entries(p.votes)) t[c] = (t[c]||0) + v;
+  });
+  return PARTIES.map(p=>({...p, votes:t[p.code]})).sort((a,b)=>b.votes-a.votes);
+}
+function alerts() {
+  const out = [];
+  ALL_PUS.forEach(p=>{
+    if (p.reported && p.over) out.push({sev:'critical', type:'Over-vote', ico:'!',
+      msg:`${fmt(p.total+p.rejected)} votes recorded against ${fmt(p.registered)} registered voters.`, pu:p, at:p.at});
+    if (p.reported && !p.hasEC8A) out.push({sev:'warning', type:'No EC8A photo', ico:'▢',
+      msg:'Result recorded without a photo of the signed form. It cannot be verified until the photo arrives.', pu:p, at:p.at});
+  });
+  ALL_PUS.filter(p=>!p.reported).slice(0, 26).forEach(p=>{
+    out.push({sev:'warning', type:'Not reported', ico:'◷',
+      msg:`No result from this unit. Agent ${p.agent} has not submitted.`, pu:p, at:DEADLINE});
+  });
+  return out.sort((a,b)=> (a.sev===b.sev ? b.at-a.at : a.sev==='critical' ? -1 : 1));
+}
+const timeOf = t => new Date(t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+
+/* =====================================================================
+   SHARED RENDER HELPERS
+   ===================================================================== */
+const esc = s => String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function coverageBar(label, done, total, tip) {
+  const pct = total ? (100*done/total) : 0;
+  const col = pct >= 80 ? 'var(--good)' : pct >= 50 ? 'var(--warning)' : 'var(--serious)';
+  return `<div class="barrow">
+    <div class="lbl" title="${esc(label)}">${esc(label)}</div>
+    <div class="track" data-tip="${esc(tip || `${done} of ${total} units reported`)}">
+      <div class="fill" style="width:${pct}%;background:${col}"></div>
+    </div>
+    <div class="num">${pct.toFixed(0)}%</div>
+  </div>`;
+}
+
+function statusStack(s) {
+  const seg = (n,c,l) => n ? `<div style="flex:${n};background:${c}" data-tip="${l}: ${fmt(n)} units"></div>` : '';
+  return `<div class="stack">
+      ${seg(s.verified,'var(--good)','Verified')}
+      ${seg(s.pending,'var(--accent)','Pending check')}
+      ${seg(s.disputed,'var(--critical)','Disputed')}
+      ${seg(s.outstanding,'var(--axis)','Not reported')}
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--good)"></i>Verified ${fmt(s.verified)}</span>
+      <span><i style="background:var(--accent)"></i>Pending ${fmt(s.pending)}</span>
+      <span><i style="background:var(--critical)"></i>Disputed ${fmt(s.disputed)}</span>
+      <span><i style="background:var(--axis)"></i>Not reported ${fmt(s.outstanding)}</span>
+    </div>`;
+}
+
+function partyChart(pus) {
+  const rows = partyTotals(pus);
+  const max = Math.max(1, ...rows.map(r=>r.votes));
+  const tot = Math.max(1, sum(rows, r=>r.votes));
+  return rows.filter(r=>r.votes>0).map(r=>`
+    <div class="party">
+      <div class="code" style="color:var(--p-${r.code})">${r.code}</div>
+      <div class="track" data-tip="${esc(r.name)}: ${fmt(r.votes)} votes">
+        <div class="fill" style="width:${100*r.votes/max}%;background:var(--p-${r.code})"></div>
+      </div>
+      <div><span class="num">${fmt(r.votes)}</span><span class="pct">${(100*r.votes/tot).toFixed(1)}%</span></div>
+    </div>`).join('');
+}
+
+function chip(p) {
+  if (!p.reported) return '<span class="chip waiting"><i></i>Not reported</span>';
+  if (p.state==='verified') return '<span class="chip verified"><i></i>Verified</span>';
+  if (p.state==='disputed') return '<span class="chip disputed"><i></i>Disputed</span>';
+  return '<span class="chip pending"><i></i>Pending</span>';
+}
+
+/* =====================================================================
+   VIEW: CONTROL ROOM
+   ===================================================================== */
+function viewControl() {
+  const s = stats(ALL_PUS);
+  const al = alerts();
+  const crit = al.filter(a=>a.sev==='critical').length;
+  const remarks = ALL_PUS.filter(p=>p.remarks).sort((a,b)=>b.at-a.at).slice(0,14);
+
+  return `
+  <div class="stats" style="margin-bottom:14px">
+    <div class="stat"><div class="k">Units reported</div>
+      <div class="v">${fmt(s.reported)}<span style="font-size:15px;color:var(--muted)"> / ${fmt(s.total)}</span></div>
+      <div class="d">${s.pct}% of the district</div></div>
+    <div class="stat"><div class="k">Votes counted</div><div class="v">${fmt(s.valid)}</div>
+      <div class="d">${fmt(s.rejected)} rejected ballots</div></div>
+    <div class="stat"><div class="k">Turnout so far</div>
+      <div class="v">${(100*(s.valid+s.rejected)/Math.max(1,sum(ALL_PUS.filter(p=>p.reported),p=>p.registered))).toFixed(1)}%</div>
+      <div class="d">of registered voters in reporting units</div></div>
+    <div class="stat ${crit?'alarm':''}"><div class="k">Open alerts</div>
+      <div class="v">${fmt(al.length)}</div>
+      <div class="d">${crit} critical, needs a call now</div></div>
+    <div class="stat"><div class="k">Awaiting EC8A</div><div class="v">${fmt(s.noEC8A)}</div>
+      <div class="d">cannot be verified without the photo</div></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)">
+    <div class="panel">
+      <h3>Reporting progress by LGA</h3>
+      <div class="sub">Share of polling units that have sent a result</div>
+      <div class="bars">
+        ${LGAS.map(l=>{
+          const ls = stats(l.wards.flatMap(w=>w.pus));
+          return coverageBar(l.name, ls.reported, ls.total,
+            `${l.name}: ${ls.reported} of ${ls.total} units · ${ls.outstanding} outstanding`);
+        }).join('')}
+      </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <h3>Status of every unit in the district</h3>
+        <div class="sub">All ${fmt(s.total)} polling units</div>
+        ${statusStack(s)}
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Running vote totals</h3>
+      <div class="sub">Across the ${fmt(s.reported)} units reported so far — not a projection</div>
+      ${partyChart(ALL_PUS)}
+      <div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--border);
+                  font-size:11.5px;color:var(--muted)">
+        Figures come only from submitted EC8A forms. ${fmt(s.outstanding)} units are still outstanding,
+        so these totals will move.
+      </div>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr); margin-top:14px">
+    <div class="panel">
+      <div class="spread">
+        <div><h3>Alerts</h3><div class="sub" style="margin:0">Critical first. Each one is a phone call.</div></div>
+        <button class="linkbtn">Export</button>
+      </div>
+      <div class="scroll">
+        ${al.slice(0,40).map(a=>`
+          <div class="alert ${a.sev}">
+            <div class="ico" style="color:var(--${a.sev==='critical'?'critical':'warning'})">${a.ico}</div>
+            <div class="body">
+              <div class="t">${a.type} — ${esc(a.pu.name)}</div>
+              <div class="m">${esc(a.msg)}</div>
+              <div class="w">${esc(a.pu.lga)} · ${esc(a.pu.ward)} · ${esc(a.pu.code)} · ${esc(a.pu.agent)} ${esc(primaryPhone(a.pu))}</div>
+            </div>
+          </div>`).join('') || '<div class="empty">No open alerts.</div>'}
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Incident remarks from agents</h3>
+      <div class="sub">What agents wrote alongside their figures</div>
+      <div class="scroll">
+        ${remarks.map(p=>`
+          <div class="alert" style="border-left:3px solid var(--accent)">
+            <div class="body">
+              <div class="m">“${esc(p.remarks)}”</div>
+              <div class="w">${esc(p.agent)} · ${esc(p.name)} · ${esc(p.ward)}, ${esc(p.lga)} · ${timeOf(p.at)}</div>
+            </div>
+          </div>`).join('') || '<div class="empty">No remarks yet.</div>'}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:14px">
+    <div class="spread">
+      <div><h3>Every LGA at a glance</h3><div class="sub" style="margin:0">Click through to an LGA for its wards</div></div>
+      <div class="row">
+        <button class="linkbtn">Download CSV</button>
+        <button class="linkbtn">Download PDF</button>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>LGA</th><th>Wards</th><th class="n">Units</th><th class="n">Reported</th>
+        <th class="n">Outstanding</th><th class="n">Disputed</th><th class="n">Registered</th>
+        <th class="n">Valid votes</th><th style="width:120px">Progress</th></tr></thead>
+      <tbody>
+        ${LGAS.map(l=>{
+          const ls = stats(l.wards.flatMap(w=>w.pus));
+          const pct = ls.pct;
+          const col = pct>=80?'var(--good)':pct>=50?'var(--warning)':'var(--serious)';
+          return `<tr>
+            <td style="color:var(--ink);font-weight:600">${esc(l.name)}</td>
+            <td>${l.wards.length}</td>
+            <td class="n">${fmt(ls.total)}</td>
+            <td class="n">${fmt(ls.reported)}</td>
+            <td class="n" style="${ls.outstanding>60?'color:var(--serious);font-weight:650':''}">${fmt(ls.outstanding)}</td>
+            <td class="n" style="${ls.disputed?'color:var(--critical);font-weight:650':''}">${fmt(ls.disputed)}</td>
+            <td class="n">${fmt(ls.registered)}</td>
+            <td class="n">${fmt(ls.valid)}</td>
+            <td><div class="track" style="height:9px" data-tip="${pct}% reported">
+              <div class="fill" style="width:${pct}%;background:${col}"></div></div></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+/* =====================================================================
+   VIEW: LGA COORDINATOR
+   ===================================================================== */
+let curLga = 'Owo';
+function viewLga() {
+  const lga = LGAS.find(l=>l.name===curLga);
+  const pus = lga.wards.flatMap(w=>w.pus);
+  const s = stats(pus);
+  const outstanding = pus.filter(p=>!p.reported);
+
+  return `
+  <div class="spread">
+    <div class="row">
+      <label style="font-size:12.5px;color:var(--muted)">Local government</label>
+      <select class="sel" id="lgaSel">
+        ${LGAS.map(l=>`<option ${l.name===curLga?'selected':''}>${esc(l.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="row"><button class="linkbtn">Export this LGA</button></div>
+  </div>
+
+  <div class="stats" style="margin-bottom:14px">
+    <div class="stat"><div class="k">Units reported</div>
+      <div class="v">${fmt(s.reported)}<span style="font-size:15px;color:var(--muted)"> / ${fmt(s.total)}</span></div>
+      <div class="d">${s.pct}% across ${lga.wards.length} wards</div></div>
+    <div class="stat"><div class="k">Outstanding</div><div class="v">${fmt(s.outstanding)}</div>
+      <div class="d">units yet to send a result</div></div>
+    <div class="stat ${s.disputed?'alarm':''}"><div class="k">Disputed</div><div class="v">${fmt(s.disputed)}</div>
+      <div class="d">failed an automatic check</div></div>
+    <div class="stat"><div class="k">Valid votes</div><div class="v">${fmt(s.valid)}</div>
+      <div class="d">${fmt(s.rejected)} rejected</div></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)">
+    <div class="panel">
+      <h3>Ward by ward</h3>
+      <div class="sub">Reporting progress inside ${esc(lga.name)}</div>
+      <div class="bars">
+        ${lga.wards.map(w=>{
+          const ws = stats(w.pus);
+          return coverageBar(w.name, ws.reported, ws.total,
+            `${w.name}: ${ws.reported} of ${ws.total} reported · ${ws.outstanding} outstanding`);
+        }).join('')}
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Vote totals in ${esc(lga.name)}</h3>
+      <div class="sub">From ${fmt(s.reported)} reporting units</div>
+      ${partyChart(pus)}
+      <div style="margin-top:15px;padding-top:13px;border-top:1px solid var(--border)">
+        <h3>Unit status</h3><div class="sub">All ${fmt(s.total)} units in this LGA</div>
+        ${statusStack(s)}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:14px">
+    <div class="spread">
+      <div><h3>Chase list</h3>
+        <div class="sub" style="margin:0">${fmt(outstanding.length)} units have not reported. Work down this list.</div></div>
+      <button class="linkbtn pri">Send reminder to all</button>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Ward</th><th>Polling unit</th><th>Code</th><th>Agent</th>
+          <th class="n">Registered</th><th style="width:150px">Contact</th></tr></thead>
+        <tbody>
+          ${outstanding.slice(0,60).map(p=>`<tr>
+            <td>${esc(p.ward)}</td>
+            <td style="color:var(--ink)">${esc(p.name)}</td>
+            <td style="font-variant-numeric:tabular-nums">${esc(p.code)}</td>
+            <td>${esc(p.agent)}
+              <div style="font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums">
+                ${esc(primaryPhone(p))}${phoneCount(p)>1?` +${phoneCount(p)-1} more`:''}
+              </div></td>
+            <td class="n">${fmt(p.registered)}</td>
+            <td><div class="row">
+              ${p.phones.filter(ph=>ph.consent).map((ph,i)=>
+                `<button class="linkbtn" title="${esc(ph.label)} — ${esc(ph.number)}">Call ${i===0?'':String(i+1)}</button>`).join('')}
+              ${p.phones.some(ph=>ph.whatsapp&&ph.consent)?'<button class="linkbtn">WhatsApp</button>':''}
+            </div></td>
+          </tr>`).join('') || '<tr><td colspan="6" class="empty">Every unit has reported.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/* =====================================================================
+   VIEW: WARD COORDINATOR
+   ===================================================================== */
+let curWardId = null;
+function viewWard() {
+  if (curWardId === null) curWardId = ALL_WARDS.find(w=>w.lga==='Owo').id;
+  const w = ALL_WARDS.find(x=>x.id===curWardId);
+  const s = stats(w.pus);
+
+  return `
+  <div class="spread">
+    <div class="row">
+      <label style="font-size:12.5px;color:var(--muted)">Ward</label>
+      <select class="sel" id="wardSel">
+        ${LGAS.map(l=>`<optgroup label="${esc(l.name)}">${
+          l.wards.map(x=>`<option value="${x.id}" ${x.id===curWardId?'selected':''}>${esc(x.name)}</option>`).join('')
+        }</optgroup>`).join('')}
+      </select>
+    </div>
+  </div>
+
+  <div class="stats" style="margin-bottom:14px">
+    <div class="stat"><div class="k">Reported</div>
+      <div class="v">${s.reported}<span style="font-size:15px;color:var(--muted)"> / ${s.total}</span></div>
+      <div class="d">${esc(w.name)}, ${esc(w.lga)}</div></div>
+    <div class="stat"><div class="k">To verify</div><div class="v">${s.pending}</div>
+      <div class="d">results awaiting your check</div></div>
+    <div class="stat ${s.disputed?'alarm':''}"><div class="k">Disputed</div><div class="v">${s.disputed}</div>
+      <div class="d">figures do not add up</div></div>
+    <div class="stat"><div class="k">Valid votes</div><div class="v">${fmt(s.valid)}</div>
+      <div class="d">of ${fmt(s.registered)} registered</div></div>
+  </div>
+
+  <div class="panel" style="margin-bottom:14px">
+    <h3>Ward progress</h3><div class="sub">${s.reported} of ${s.total} units in</div>
+    ${statusStack(s)}
+  </div>
+
+  <div class="panel">
+    <h3>Polling units</h3>
+    <div class="sub">Check each result against the EC8A photo before verifying it</div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Unit</th><th>Code</th><th>Agent</th><th class="n">Reg.</th>
+          <th class="n">Votes</th><th>EC8A</th><th>Status</th><th style="width:170px">Action</th></tr></thead>
+        <tbody>
+          ${w.pus.map(p=>`<tr>
+            <td style="color:var(--ink)">${esc(p.name)}</td>
+            <td style="font-variant-numeric:tabular-nums">${esc(p.code)}</td>
+            <td>${esc(p.agent)}
+              ${p.phones.map((ph,i)=>`<div style="font-size:11px;color:var(--muted);
+                 display:flex;align-items:center;gap:5px">
+                 <span style="font-variant-numeric:tabular-nums">${esc(ph.number)}</span>
+                 ${i===0?'<span class="tag">primary</span>':''}
+                 ${ph.whatsapp && ph.consent?'<span class="tag wa">WA</span>':''}
+                 ${!ph.consent?'<span class="tag no">no consent</span>':''}
+               </div>`).join('')}
+            </td>
+            <td class="n">${fmt(p.registered)}</td>
+            <td class="n" style="${p.over?'color:var(--critical);font-weight:680':''}">
+              ${p.reported ? fmt(p.total + p.rejected) : '—'}</td>
+            <td>${p.reported ? (p.hasEC8A
+                  ? '<span style="color:var(--good)">✓ attached</span>'
+                  : '<span style="color:var(--warning)">✕ missing</span>') : '—'}</td>
+            <td>${chip(p)}</td>
+            <td><div class="row">${
+              !p.reported
+                ? '<button class="linkbtn">Call agent</button><button class="linkbtn">WhatsApp</button>'
+                : p.state==='pending'
+                  ? `<button class="linkbtn pri" ${p.hasEC8A?'':'disabled title="No EC8A photo — cannot verify"'}>Verify</button><button class="linkbtn">Dispute</button>`
+                  : '<button class="linkbtn">View EC8A</button>'
+            }</div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/* =====================================================================
+   VIEW: AGENT (phone)
+   ===================================================================== */
+let agentPU = null, agentSubmitted = false, agentPhoto = false, agentRef = '';
+function viewAgent() {
+  if (!agentPU) agentPU = ALL_PUS.find(p=>!p.reported && p.lga==='Owo') || ALL_PUS[0];
+  const p = agentPU;
+
+  if (agentSubmitted) {
+    return `<div class="phoneWrap"><div class="phone"><div class="receipt">
+      <div class="tick">✓</div>
+      <h2 style="font-size:17px">Result recorded</h2>
+      <div style="color:var(--ink-2);font-size:13px;margin-top:5px">${esc(p.name)}</div>
+      <div class="ref">${agentRef}</div>
+      <div style="font-size:11.5px;color:var(--muted)">Your reference number</div>
+      <div style="background:var(--panel-2);border:1px solid var(--border);border-radius:var(--r-sm);
+                  padding:12px;margin:19px 0;font-size:12.5px;color:var(--ink-2);text-align:left">
+        Keep the signed EC8A safe. Your ward coordinator may call to check the figures
+        against the photo you sent.
+      </div>
+      <button class="btn ghost" id="againBtn">Submit for another unit</button>
+    </div></div></div>`;
+  }
+
+  return `<div class="phoneWrap"><div class="phone">
+    <div class="head">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600">
+        Polling unit result</div>
+      <div class="pu">${esc(p.name)}</div>
+      <div class="meta">${esc(p.code)} · ${esc(p.ward)}, ${esc(p.lga)}</div>
+      <div class="meta" style="margin-top:6px;color:var(--ink-2)">
+        Agent: <b>${esc(p.agent)}</b> · Registered voters: <b>${fmt(p.registered)}</b></div>
+      <div class="meta" style="margin-top:3px">
+        ${p.phones.map(ph=>esc(ph.number)).join(' · ')}</div>
+    </div>
+    <div class="form">
+      <div class="field">
+        <label for="acc">Accredited voters <span class="hint">— from the BVAS</span></label>
+        <input type="number" id="acc" min="0" max="${p.registered}" placeholder="0">
+      </div>
+
+      <div class="field">
+        <label>Votes for each party <span class="hint">— copy from the signed EC8A</span></label>
+        ${PARTIES.map(pt=>`
+          <div class="voterow">
+            <div class="pname"><span class="swatch" style="background:var(--p-${pt.code})"></span>
+              <b>${pt.code}</b></div>
+            <input type="number" min="0" class="pv" data-c="${pt.code}" placeholder="0">
+          </div>`).join('')}
+      </div>
+
+      <div class="field">
+        <label for="rej">Rejected ballots</label>
+        <input type="number" id="rej" min="0" placeholder="0">
+      </div>
+
+      <div class="totalbox">
+        <div class="r"><span>Valid votes</span><span id="tValid">0</span></div>
+        <div class="r"><span>Rejected</span><span id="tRej">0</span></div>
+        <div class="r big"><span>Total cast</span><span id="tAll">0</span></div>
+        <div class="r" style="margin-top:5px;font-size:11.5px;color:var(--muted)">
+          <span>Registered at this unit</span><span>${fmt(p.registered)}</span></div>
+      </div>
+
+      <div id="warnBox"></div>
+
+      <div class="field">
+        <label>Photo of the signed Form EC8A <span class="hint">— required</span></label>
+        <div class="photo" id="photo">
+          <div class="big" id="photoIcon">▢</div>
+          <div class="t" id="photoText">Tap to take the photo</div>
+          <div class="s" id="photoSub">Hold the sheet flat. All figures must be readable.</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="rem">Remarks <span class="hint">— incidents, delays, disputes</span></label>
+        <textarea id="rem" maxlength="1000" placeholder="Leave blank if nothing happened."></textarea>
+      </div>
+
+      <button class="btn" id="submitBtn" disabled>Submit result</button>
+      <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:9px">
+        You can correct a figure after sending. Nothing is ever deleted.
+      </div>
+    </div>
+  </div></div>`;
+}
+
+function wireAgent() {
+  const p = agentPU;
+  if (!p) return;
+  const $ = s => document.querySelector(s);
+  const photo = $('#photo'), btn = $('#submitBtn');
+  if (!photo) {
+    const again = $('#againBtn');
+    if (again) again.onclick = () => {
+      agentSubmitted = false; agentPhoto = false;
+      agentPU = ALL_PUS.find(x=>!x.reported && x.id!==p.id) || p;
+      render();
+    };
+    return;
+  }
+
+  function recalc() {
+    const valid = [...document.querySelectorAll('.pv')]
+      .reduce((t,i)=>t + (parseInt(i.value,10)||0), 0);
+    const rej = parseInt($('#rej').value,10) || 0;
+    const all = valid + rej;
+    $('#tValid').textContent = fmt(valid);
+    $('#tRej').textContent = fmt(rej);
+    $('#tAll').textContent = fmt(all);
+
+    const over = all > p.registered;
+    $('#warnBox').innerHTML = over ? `
+      <div class="inlinewarn">
+        <b>More votes than registered voters</b>
+        You have entered ${fmt(all)} votes, but only ${fmt(p.registered)} voters are
+        registered at this unit. Check the figures against the EC8A. If the form really
+        says this, send it anyway and explain in the remarks — the control room will be alerted.
+      </div>` : '';
+    $('#tAll').style.color = over ? 'var(--critical)' : '';
+    btn.disabled = !(valid > 0 && agentPhoto);
+    btn.textContent = agentPhoto ? 'Submit result'
+      : (valid > 0 ? 'Attach the EC8A photo to continue' : 'Submit result');
+  }
+
+  document.querySelectorAll('.pv').forEach(i=>i.addEventListener('input', recalc));
+  $('#rej').addEventListener('input', recalc);
+  $('#acc').addEventListener('input', recalc);
+
+  photo.onclick = () => {
+    agentPhoto = !agentPhoto;
+    photo.classList.toggle('on', agentPhoto);
+    $('#photoIcon').textContent = agentPhoto ? '✓' : '▢';
+    $('#photoIcon').style.color = agentPhoto ? 'var(--good)' : '';
+    $('#photoText').textContent = agentPhoto ? 'EC8A photo attached' : 'Tap to take the photo';
+    $('#photoSub').textContent = agentPhoto
+      ? `EC8A-${p.code.replace(/\//g,'-')}.jpg · tap to remove`
+      : 'Hold the sheet flat. All figures must be readable.';
+    recalc();
+  };
+
+  btn.onclick = () => {
+    agentRef = Math.random().toString(16).slice(2,10).toUpperCase();
+    agentSubmitted = true;
+    render();
+  };
+  recalc();
+}
+
+/* =====================================================================
+   SHELL
+   ===================================================================== */
+const NOTES = {
+  agent: 'What a polling agent sees on their phone. The same questions are asked over WhatsApp for agents on a weak connection. Try entering votes above the registered number to see the over-vote check fire.',
+  ward: 'What a ward coordinator sees: every unit in their ward, who has not reported, and results waiting to be checked against the EC8A photo. Agents can hold several numbers — each is marked for WhatsApp and for recorded consent. Verify is disabled where no photo was sent.',
+  lga: 'What an LGA coordinator sees: progress across their wards and a chase list of units that have gone quiet.',
+  control: 'What the district control room sees on election night. Figures are from submitted EC8A forms only — never a projection.',
+};
+let view = 'control';
+
+function render() {
+  document.querySelectorAll('#roles button').forEach(b =>
+    b.setAttribute('aria-selected', String(b.dataset.v === view)));
+  document.getElementById('note').textContent = NOTES[view];
+  const el = document.getElementById('view');
+  el.innerHTML = view==='agent' ? viewAgent()
+               : view==='ward' ? viewWard()
+               : view==='lga' ? viewLga()
+               : viewControl();
+
+  if (view==='agent') wireAgent();
+  if (view==='lga') document.getElementById('lgaSel').onchange = e => { curLga = e.target.value; render(); };
+  if (view==='ward') document.getElementById('wardSel').onchange = e => { curWardId = +e.target.value; render(); };
+  wireTips();
+}
+
+/* hover tooltips on every chart mark */
+const tip = document.getElementById('tip');
+function wireTips() {
+  document.querySelectorAll('[data-tip]').forEach(el=>{
+    el.addEventListener('mouseenter', e=>{
+      tip.textContent = el.dataset.tip; tip.style.opacity = '1';
+    });
+    el.addEventListener('mousemove', e=>{
+      tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 10) + 'px';
+      tip.style.top  = (e.clientY - 30) + 'px';
+    });
+    el.addEventListener('mouseleave', ()=>{ tip.style.opacity = '0'; });
+  });
+}
+
+document.getElementById('roles').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if (!b) return;
+  view = b.dataset.v; render();
+});
+
+const themeBtn = document.getElementById('themeBtn');
+themeBtn.onclick = () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? 'Dark' : 'Light';
+};
+
+render();
+</script>
+</body>
+</html>
