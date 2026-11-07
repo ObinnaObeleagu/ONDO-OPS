@@ -40,6 +40,25 @@ export default function LoginForm() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Supabase's client throws rather than returning a clean {error} when it
+  // can't reach the project at all (missing/wrong env vars, network down) —
+  // as opposed to a normal auth failure (wrong password), which it reports
+  // via the returned {error} instead. Without a try/catch, a thrown error
+  // skips straight past setBusy(false) below, leaving the button stuck on
+  // "Signing in…" forever with no feedback at all. Wrapping every call in
+  // try/catch/finally means setBusy(false) always runs, and an unreachable
+  // backend shows an explicit message instead of silently hanging.
+  function describeAuthFailure(e: unknown): string {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/fetch|network|NetworkError|Failed to fetch/i.test(msg)) {
+      return 'Could not reach the server. Check your connection and try again.';
+    }
+    if (/NEXT_PUBLIC_SUPABASE/i.test(msg) || msg.includes('undefined')) {
+      return 'The app is not configured correctly (missing Supabase settings). Contact an admin.';
+    }
+    return 'Something went wrong. Please try again.';
+  }
+
   async function sendCode(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
@@ -49,14 +68,19 @@ export default function LoginForm() {
       return;
     }
     setBusy(true);
-    const supabase = supabaseBrowser();
-    const { error } = await supabase.auth.signInWithOtp({ phone });
-    setBusy(false);
-    if (error) {
-      setErr('Could not send a code. Check the number and try again.');
-      return;
+    try {
+      const supabase = supabaseBrowser();
+      const { error } = await supabase.auth.signInWithOtp({ phone });
+      if (error) {
+        setErr('Could not send a code. Check the number and try again.');
+        return;
+      }
+      setPhoneStep('code');
+    } catch (e) {
+      setErr(describeAuthFailure(e));
+    } finally {
+      setBusy(false);
     }
-    setPhoneStep('code');
   }
 
   async function verifyCode(e: React.FormEvent) {
@@ -64,30 +88,40 @@ export default function LoginForm() {
     setErr(null);
     const phone = toE164(phoneInput)!;
     setBusy(true);
-    const supabase = supabaseBrowser();
-    const { error } = await supabase.auth.verifyOtp({ phone, token: code, type: 'sms' });
-    setBusy(false);
-    if (error) {
-      setErr('That code did not work. Check it and try again.');
-      return;
+    try {
+      const supabase = supabaseBrowser();
+      const { error } = await supabase.auth.verifyOtp({ phone, token: code, type: 'sms' });
+      if (error) {
+        setErr('That code did not work. Check it and try again.');
+        return;
+      }
+      router.replace(next);
+      router.refresh();
+    } catch (e) {
+      setErr(describeAuthFailure(e));
+    } finally {
+      setBusy(false);
     }
-    router.replace(next);
-    router.refresh();
   }
 
   async function signInWithPassword(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setBusy(true);
-    const supabase = supabaseBrowser();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setBusy(false);
-    if (error) {
-      setErr('Email or password is wrong.');
-      return;
+    try {
+      const supabase = supabaseBrowser();
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setErr('Email or password is wrong.');
+        return;
+      }
+      router.replace(next);
+      router.refresh();
+    } catch (e) {
+      setErr(describeAuthFailure(e));
+    } finally {
+      setBusy(false);
     }
-    router.replace(next);
-    router.refresh();
   }
 
   return (
