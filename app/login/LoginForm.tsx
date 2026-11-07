@@ -48,15 +48,13 @@ export default function LoginForm() {
   // "Signing in…" forever with no feedback at all. Wrapping every call in
   // try/catch/finally means setBusy(false) always runs, and an unreachable
   // backend shows an explicit message instead of silently hanging.
+  // TEMPORARY, for diagnosing the current sign-in issue: shows the real
+  // caught error text on the page instead of a generic message, so it
+  // doesn't require DevTools to read. Revert to a plain friendly message
+  // (or add a DEBUG-flag check) once sign-in is confirmed working.
   function describeAuthFailure(e: unknown): string {
     const msg = e instanceof Error ? e.message : String(e);
-    if (/fetch|network|NetworkError|Failed to fetch/i.test(msg)) {
-      return 'Could not reach the server. Check your connection and try again.';
-    }
-    if (/NEXT_PUBLIC_SUPABASE/i.test(msg) || msg.includes('undefined')) {
-      return 'The app is not configured correctly (missing Supabase settings). Contact an admin.';
-    }
-    return 'Something went wrong. Please try again.';
+    return `Sign-in error (debug): ${msg}`;
   }
 
   async function sendCode(e: React.FormEvent) {
