@@ -14,14 +14,19 @@ alert the system raises.
 
 ```
 db/      PostgreSQL schema, security policies, views, seed data, tests
-app/     API route handlers, validation, WhatsApp webhook, portal routing
+app/     Next.js app — login page, API routes, WhatsApp webhook, routing
+lib/     Supabase client helpers (server + browser)
 proto/   Interactive prototype of all four screens (self-contained HTML)
-docs/    Architecture, security, access control, backups, review checklist
+docs/    Deployment, architecture, security, field guide
 ```
 
-Start with `docs/ARCHITECTURE.md` for how the four portals work off one
-database, and `docs/SECURITY.md` for access control and the pre-election
-checklist.
+- **`docs/DEPLOYMENT.md`** — Supabase + Vercel + WhatsApp, start to a live
+  URL. Start here to actually run this.
+- `docs/FIELD-GUIDE.md` — how each role uses the system on the day, the
+  escalation ladder, the election-day timeline. Build agent training from
+  this.
+- `docs/ARCHITECTURE.md` — how four portals work off one database.
+- `docs/SECURITY.md` — access control, NDPA, backups, pre-election checklist.
 
 ### Status
 
@@ -34,9 +39,10 @@ checklist.
 | Dashboard views (coverage, alerts, remarks, exports) | **Built** |
 | Ondo North geography: 6 LGAs, 72 wards | **Seeded and verified** |
 | Validation layer | **Built and tested** — 21/21 tests pass |
+| Login page (phone OTP + email/password) | **Built — `npx next build` passes clean** |
 | Web submission API | **Built** — needs a Supabase project to run against |
-| WhatsApp bot | **Built** — needs Meta Cloud API credentials |
-| Four screens | **Prototype built and reviewed** |
+| WhatsApp bot | **Built** — needs Meta Cloud API credentials, see `docs/DEPLOYMENT.md` |
+| Four full dashboard screens (beyond the prototype) | **Not yet wired as Next.js pages** — the prototype in `proto/` is the design reference |
 | Polling unit register | **Not loaded** — see below |
 
 ### The one thing still missing
@@ -54,7 +60,11 @@ not place rather than dropping it silently.
 
 ## Setting it up
 
+For a full guide to getting this onto a URL with Supabase, Vercel and a
+working WhatsApp bot, see **`docs/DEPLOYMENT.md`**. Locally:
+
 ```bash
+npm install
 createdb ondo_ops
 psql -d ondo_ops -v ON_ERROR_STOP=1 -f db/01_schema.sql
 psql -d ondo_ops -v ON_ERROR_STOP=1 -f db/02_security.sql
@@ -84,6 +94,13 @@ SUPABASE_URL=                     NEXT_PUBLIC_SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=        NEXT_PUBLIC_SUPABASE_ANON_KEY=
 WHATSAPP_TOKEN=                   WHATSAPP_PHONE_NUMBER_ID=
 WHATSAPP_VERIFY_TOKEN=            WHATSAPP_APP_SECRET=
+```
+
+Where each of these comes from, and how to wire up the WhatsApp side
+specifically, is in `docs/DEPLOYMENT.md`.
+
+```bash
+npx next build    # confirms the app actually compiles before you deploy
 ```
 
 ---

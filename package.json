@@ -1,0 +1,28 @@
+{
+  "name": "ondo-north-ops",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test:unit": "tsx app/lib/validation.test.ts",
+    "test:db": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f db/99_test.sql",
+    "test:access": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f db/98_test_access.sql"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.45.4",
+    "next": "^14.2.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
