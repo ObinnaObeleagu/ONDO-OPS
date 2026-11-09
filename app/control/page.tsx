@@ -11,14 +11,18 @@
  * see app/page.tsx for why a static/cacheable page is dangerous here.
  */
 import { supabaseServer } from '@/lib/supabase/server';
-import { fmt, timeOf, pctColor, flagLabel, flagIcon } from '@/lib/format';
+import { fmt, timeOf, pctColor, flagLabel, flagIcon, units } from '@/lib/format';
 import type { DistrictSummary, PartyTotal, LgaCoverage, OpenAlert, IncidentRemark } from '@/lib/types';
-import SignOutButton from '@/components/SignOutButton';
+import Link from 'next/link';
+import { getScope } from '@/lib/scope';
+import PortalHeader from '@/components/PortalHeader';
+import { CoverageBar, StatusStack, PartyBars } from '@/components/Charts';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ControlPage() {
   const supabase = supabaseServer();
+  const scope = await getScope();
 
   const [summaryRes, partiesRes, lgasRes, alertsRes, remarksRes] = await Promise.all([
     supabase.from('v_district_summary').select('*').single(),
@@ -39,18 +43,10 @@ export default async function ControlPage() {
 
   const criticalCount = alerts.filter((a) => a.severity === 'critical').length;
   const missingEc8aCount = alerts.filter((a) => a.type === 'MISSING_EC8A').length;
-  const maxPartyVotes = Math.max(1, ...parties.map((p) => p.votes));
-  const totalPartyVotes = Math.max(1, parties.reduce((t, p) => t + p.votes, 0));
 
   return (
     <div>
-      <div className="topbar">
-        <div className="brand">
-          <strong><span className="livedot" />Control Room</strong>
-          <span>Ondo North senatorial district</span>
-        </div>
-        <SignOutButton />
-      </div>
+      <PortalHeader title="Control Room" subtitle="Ondo North senatorial district" current="/control" scope={scope} />
 
       <div className="wrap">
         {loadError && (
@@ -93,14 +89,15 @@ export default async function ControlPage() {
           </div>
         )}
 
-        <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1.25fr) minmax(0,1fr)' }}>
+        <div className="grid twocol" style={{ gridTemplateColumns: 'minmax(0,1.25fr) minmax(0,1fr)' }}>
           <div className="panel">
             <h3>Reporting progress by LGA</h3>
             <div className="sub">Share of polling units that have sent a result</div>
             <div className="bars">
               {lgas.map((l) => (
-                <CoverageBarRow
+                <CoverageBar
                   key={l.lga_id}
+                  href={`/lga?lga=${l.lga_id}`}
                   label={l.lga_name}
                   done={l.reported_pus}
                   total={l.total_pus}
@@ -125,30 +122,9 @@ export default async function ControlPage() {
           <div className="panel">
             <h3>Running vote totals</h3>
             <div className="sub">
-              Across the {fmt(s?.reported_pus)} units reported so far — not a projection
+              Across the {units(s?.reported_pus)} reported so far — not a projection
             </div>
-            {parties
-              .filter((p) => p.votes > 0)
-              .map((p) => (
-                <div className="party" key={p.party_id}>
-                  <div className="code" style={{ color: `var(--p-${p.party_code})` }}>
-                    {p.party_code}
-                  </div>
-                  <div className="track" data-tip={`${p.party_name}: ${fmt(p.votes)} votes`}>
-                    <div
-                      className="fill"
-                      style={{
-                        width: `${(100 * p.votes) / maxPartyVotes}%`,
-                        background: `var(--p-${p.party_code})`,
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <span className="num">{fmt(p.votes)}</span>
-                    <span className="pct">{((100 * p.votes) / totalPartyVotes).toFixed(1)}%</span>
-                  </div>
-                </div>
-              ))}
+            <PartyBars rows={parties.map((p) => ({ code: p.party_code, name: p.party_name, votes: p.votes }))} />
             {s && (
               <div
                 style={{
@@ -159,15 +135,15 @@ export default async function ControlPage() {
                   color: 'var(--muted)',
                 }}
               >
-                Figures come only from submitted EC8A forms. {fmt(s.outstanding_pus)} units are
-                still outstanding, so these totals will move.
+                Figures come only from submitted EC8A forms. {units(s.outstanding_pus)}{' '}
+                {s.outstanding_pus === 1 ? 'is' : 'are'} still outstanding, so these totals will move.
               </div>
             )}
           </div>
         </div>
 
         <div
-          className="grid"
+          className="grid twocol"
           style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', marginTop: 14 }}
         >
           <div className="panel">
@@ -234,7 +210,7 @@ export default async function ControlPage() {
             <div>
               <h3>Every LGA at a glance</h3>
               <div className="sub" style={{ margin: 0 }}>
-                Figures refresh on every page load
+                Click an LGA for its wards · figures refresh on every page load
               </div>
             </div>
           </div>
@@ -255,7 +231,9 @@ export default async function ControlPage() {
             <tbody>
               {lgas.map((l) => (
                 <tr key={l.lga_id}>
-                  <td style={{ color: 'var(--ink)', fontWeight: 600 }}>{l.lga_name}</td>
+                  <td style={{ color: 'var(--ink)', fontWeight: 600 }}>
+                    <Link className="plain" href={`/lga?lga=${l.lga_id}`}>{l.lga_name}</Link>
+                  </td>
                   <td>{l.total_wards}</td>
                   <td className="n">{fmt(l.total_pus)}</td>
                   <td className="n">{fmt(l.reported_pus)}</td>
@@ -288,68 +266,5 @@ export default async function ControlPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function CoverageBarRow({
-  label,
-  done,
-  total,
-  tip,
-}: {
-  label: string;
-  done: number;
-  total: number;
-  tip: string;
-}) {
-  const pct = total ? (100 * done) / total : 0;
-  return (
-    <div className="barrow">
-      <div className="lbl" title={label}>
-        {label}
-      </div>
-      <div className="track" data-tip={tip}>
-        <div className="fill" style={{ width: `${pct}%`, background: pctColor(pct) }} />
-      </div>
-      <div className="num">{pct.toFixed(0)}%</div>
-    </div>
-  );
-}
-
-function StatusStack({
-  verified,
-  pending,
-  disputed,
-  outstanding,
-}: {
-  verified: number;
-  pending: number;
-  disputed: number;
-  outstanding: number;
-}) {
-  const seg = (n: number, color: string) => (n ? { flexGrow: n, background: color } : null);
-  return (
-    <>
-      <div className="stack">
-        {verified > 0 && <div style={seg(verified, 'var(--good)') as React.CSSProperties} />}
-        {pending > 0 && <div style={seg(pending, 'var(--accent)') as React.CSSProperties} />}
-        {disputed > 0 && <div style={seg(disputed, 'var(--critical)') as React.CSSProperties} />}
-        {outstanding > 0 && <div style={seg(outstanding, 'var(--axis)') as React.CSSProperties} />}
-      </div>
-      <div className="legend">
-        <span>
-          <i style={{ background: 'var(--good)' }} />Verified {fmt(verified)}
-        </span>
-        <span>
-          <i style={{ background: 'var(--accent)' }} />Pending {fmt(pending)}
-        </span>
-        <span>
-          <i style={{ background: 'var(--critical)' }} />Disputed {fmt(disputed)}
-        </span>
-        <span>
-          <i style={{ background: 'var(--axis)' }} />Not reported {fmt(outstanding)}
-        </span>
-      </div>
-    </>
   );
 }
