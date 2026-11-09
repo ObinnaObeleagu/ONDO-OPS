@@ -31,7 +31,11 @@ const ALLOWED: Record<string, string[]> = {
   observer:         ['/control'],
 };
 
-const PUBLIC = ['/login', '/auth', '/_next', '/favicon.ico', '/api/whatsapp'];
+// /api/ is passed straight through: every route under it checks the
+// caller itself (session, role, RLS scope) and answers with JSON. Before
+// this, the portal check below redirected /api/submit to the user's
+// portal page, so a web submission could never reach the route.
+const PUBLIC = ['/login', '/auth', '/_next', '/favicon.ico', '/api/'];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
