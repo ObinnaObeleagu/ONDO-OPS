@@ -30,3 +30,8 @@ export function flagLabel(type: string): string {
 export function flagIcon(severity: string): string {
   return severity === 'critical' ? '!' : severity === 'warning' ? '▢' : '◷';
 }
+
+/** "1 unit" / "3 units" */
+export function units(n: number | null | undefined): string {
+  return `${fmt(n)} ${n === 1 ? 'unit' : 'units'}`;
+}
