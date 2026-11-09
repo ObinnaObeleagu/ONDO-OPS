@@ -41,6 +41,35 @@ as $$
   select coalesce(current_role_of() in ('admin','observer'), false);
 $$;
 
+-- The caller's own lga_id / ward_id. security definer for the same
+-- reason as current_role_of() above, but there's a second reason this
+-- one specifically has to be a function and can't be inlined as a
+-- subquery on app_users inside a policy: app_users is itself the
+-- table being policed. A bare `select lga_id from app_users where id =
+-- app_current_user_id()` written directly inside a USING clause on
+-- app_users re-enters that same table's RLS to evaluate itself, which
+-- re-enters it again, and so on — "infinite recursion detected in
+-- policy for relation app_users". Going through a security definer
+-- function sidesteps RLS on app_users entirely for this one lookup,
+-- the same way current_role_of() already does.
+create or replace function my_lga_id()
+returns smallint
+language sql
+stable
+security definer
+as $$
+  select lga_id from app_users where id = app_current_user_id() and is_active;
+$$;
+
+create or replace function my_ward_id()
+returns integer
+language sql
+stable
+security definer
+as $$
+  select ward_id from app_users where id = app_current_user_id() and is_active;
+$$;
+
 -- Every polling unit the current user is entitled to see.
 create or replace function visible_pu_ids()
 returns table (pu_id integer)
@@ -113,10 +142,8 @@ create policy users_read_self on app_users
 create policy users_read_scope on app_users
   for select using (
     can_read_all()
-    or (current_role_of() = 'lga_coordinator'
-        and lga_id = (select lga_id from app_users where id = app_current_user_id()))
-    or (current_role_of() = 'ward_coordinator'
-        and ward_id = (select ward_id from app_users where id = app_current_user_id()))
+    or (current_role_of() = 'lga_coordinator' and lga_id = my_lga_id())
+    or (current_role_of() = 'ward_coordinator' and ward_id = my_ward_id())
   );
 
 create policy users_write on app_users
@@ -299,6 +326,26 @@ grant execute on function verify_result(uuid, uuid, boolean, text) to app_rw;
 grant execute on function flag_late_reports(timestamptz) to app_rw;
 grant execute on function my_scope() to app_rw;
 grant usage, select on all sequences in schema public to app_rw;
+
+-- The Next.js app never connects as app_rw directly — it talks to
+-- Supabase's REST layer with the anon key plus the signed-in user's
+-- JWT, and Supabase runs that query as its own built-in `authenticated`
+-- role (not as a role this project defines). Without this grant,
+-- every RLS-scoped select the web app makes — the polling-unit
+-- entitlement check in app/api/submit/route.ts, my_scope(), the
+-- dashboard reads — fails with "permission denied for table ...",
+-- even though the RLS policies themselves are correct, because GRANT
+-- and RLS are two separate gates and both must pass. Role membership
+-- means `authenticated` inherits everything app_rw has, with no
+-- change to any policy above. `authenticated` only exists on a real
+-- Supabase project, so this is skipped (not an error) when this file
+-- runs anywhere else, such as a local test database.
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'authenticated') then
+    execute 'grant app_rw to authenticated';
+  end if;
+end $$;
 
 -- Service role for scheduled jobs (late-report sweep, exports, backups).
 do $$

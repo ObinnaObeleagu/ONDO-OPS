@@ -31,12 +31,25 @@ immutable
 as $$
   -- lowercase, collapse whitespace, strip punctuation so 'Idoani I' and
   -- 'IDOANI  1' match. Roman numerals I/II/III are normalised to digits.
-  select regexp_replace(
-           regexp_replace(
-             regexp_replace(lower(btrim(coalesce(p,''))), '\s+', ' ', 'g'),
-             '[^a-z0-9 /]', '', 'g'),
-           '\m(iii|ii|i)\M',
-           '', 'g')
+  --
+  -- Punctuation becomes a SPACE, not nothing: deleting it turned
+  -- 'Akoko North-East' into 'akoko northeast', which then failed to match
+  -- 'AKOKO NORTH EAST' as INEC registers commonly spell it.
+  --
+  -- Roman numerals become DIGITS, not nothing: deleting them made
+  -- 'Ikado I' and 'Ikado II' both 'ikado', so the fallback match could
+  -- silently assign a unit to the wrong ward of a pair. Now 'Ikado II',
+  -- 'IKADO 2' and 'Ikado-II' all normalise to 'ikado 2'.
+  select btrim(regexp_replace(
+           regexp_replace(regexp_replace(regexp_replace(regexp_replace(
+             regexp_replace(
+               regexp_replace(lower(coalesce(p,'')), '[^a-z0-9]', ' ', 'g'),
+               '\s+', ' ', 'g'),
+             '\miv\M', '4', 'g'),
+             '\miii\M', '3', 'g'),
+             '\mii\M', '2', 'g'),
+             '\mi\M', '1', 'g'),
+           '\s+', ' ', 'g'))
 $$;
 
 create or replace function load_polling_units()
@@ -61,12 +74,22 @@ begin
      limit 1;
 
     if v_ward_id is null then
+      -- Normalised fallback. Must be unambiguous: if it matches more than
+      -- one ward, report the row instead of guessing which one it meant.
+      if (select count(*) from wards w join lgas l on l.id = w.lga_id
+           where norm_name(l.name) = norm_name(r.lga)
+             and norm_name(w.name) = norm_name(r.ward)) > 1 then
+        v_skipped := v_skipped + 1;
+        v_problems := v_problems ||
+          format('Ambiguous ward match: LGA="%s" ward="%s" PU="%s"', r.lga, r.ward, r.pu_name);
+        continue;
+      end if;
+
       select w.id into v_ward_id
         from wards w
         join lgas l on l.id = w.lga_id
        where norm_name(l.name) = norm_name(r.lga)
-         and norm_name(w.name) = norm_name(r.ward)
-       limit 1;
+         and norm_name(w.name) = norm_name(r.ward);
     end if;
 
     if v_ward_id is null then
